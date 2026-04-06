@@ -1,61 +1,54 @@
 #!/usr/bin/env bash
-# sync.sh — pulls core source files from vercel-labs/agent-browser and patches them
-# for use as a standalone library crate.
-#
-# This file is part of agent-browser-core-unofficial.
+# sync.sh — pulls source files from vercel-labs/agent-browser for use as a library crate.
 # Original work Copyright 2025 Vercel Inc., licensed under Apache-2.0.
-# Modifications Copyright contributors of agent-browser-core-unofficial.
 set -euo pipefail
 
-UPSTREAM_RAW="https://raw.githubusercontent.com/vercel-labs/agent-browser/main"
-UPSTREAM_API="https://api.github.com/repos/vercel-labs/agent-browser/contents"
-SRC="cli/src"
+RAW="https://raw.githubusercontent.com/vercel-labs/agent-browser/main"
+SRC="$RAW/cli/src"
+
+fetch() { curl -fsSL "$1" -o "$2" && echo "  synced $2"; }
 
 echo "Syncing from upstream vercel-labs/agent-browser..."
 
 # Sync version from upstream Cargo.toml
-VERSION=$(curl -fsSL "$UPSTREAM_RAW/cli/Cargo.toml" \
+VERSION=$(curl -fsSL "$RAW/cli/Cargo.toml" \
   | grep '^version' | head -1 | sed 's/version = "\(.*\)"/\1/')
 sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
 echo "Version: $VERSION"
 
-# Sync build.rs (required for OUT_DIR / cdp_generated.rs codegen)
-curl -fsSL "$UPSTREAM_RAW/cli/build.rs" -o "build.rs"
-echo "  synced build.rs"
+# build.rs (required for cdp_generated.rs codegen via OUT_DIR)
+fetch "$RAW/cli/build.rs" "build.rs"
 
-# Sync cdp-protocol directory (used by build.rs)
-sync_dir "$SRC/../cdp-protocol" "cdp-protocol"
+# cdp-protocol JSON files (consumed by build.rs)
+mkdir -p cdp-protocol
+fetch "$RAW/cli/cdp-protocol/browser_protocol.json" "cdp-protocol/browser_protocol.json"
+fetch "$RAW/cli/cdp-protocol/js_protocol.json"      "cdp-protocol/js_protocol.json"
 
-# Core source files to sync (excludes CLI-only: main.rs, upgrade.rs)
-CORE_FILES=(color.rs commands.rs connection.rs flags.rs install.rs output.rs validation.rs test_utils.rs)
-
+# Top-level src files (excludes main.rs, upgrade.rs which are CLI-only)
 mkdir -p src
-for f in "${CORE_FILES[@]}"; do
-  curl -fsSL "$UPSTREAM_RAW/$SRC/$f" -o "src/$f"
-  echo "  synced src/$f"
+for f in color.rs commands.rs connection.rs flags.rs install.rs output.rs validation.rs test_utils.rs; do
+  fetch "$SRC/$f" "src/$f"
 done
 
-# Sync native/ directory recursively
-sync_dir() {
-  local api_path="$1"
-  local local_path="$2"
-  mkdir -p "$local_path"
+# src/native/ top-level files
+mkdir -p src/native
+for f in actions.rs auth.rs browser.rs cookies.rs daemon.rs diff.rs e2e_tests.rs \
+          element.rs inspect_server.rs interaction.rs mod.rs network.rs \
+          parity_tests.rs policy.rs providers.rs recording.rs screenshot.rs \
+          snapshot.rs state.rs storage.rs stream.rs tracing.rs; do
+  fetch "$SRC/native/$f" "src/native/$f"
+done
 
-  curl -fsSL "$UPSTREAM_API/$api_path" | python3 -c "
-import sys, json
-items = json.load(sys.stdin)
-for item in items:
-    print(item['type'] + ' ' + item['name'])
-" | while read -r type name; do
-    if [ "$type" = "file" ]; then
-      curl -fsSL "$UPSTREAM_RAW/$api_path/$name" -o "$local_path/$name"
-      echo "  synced $local_path/$name"
-    elif [ "$type" = "dir" ]; then
-      sync_dir "$api_path/$name" "$local_path/$name"
-    fi
-  done
-}
+# src/native/cdp/
+mkdir -p src/native/cdp
+for f in chrome.rs client.rs discovery.rs lightpanda.rs mod.rs types.rs; do
+  fetch "$SRC/native/cdp/$f" "src/native/cdp/$f"
+done
 
-sync_dir "$SRC/native" "src/native"
+# src/native/webdriver/
+mkdir -p src/native/webdriver
+for f in appium.rs backend.rs client.rs ios.rs mod.rs safari.rs types.rs; do
+  fetch "$SRC/native/webdriver/$f" "src/native/webdriver/$f"
+done
 
 echo "Sync complete: $VERSION"
