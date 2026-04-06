@@ -19,8 +19,15 @@ VERSION=$(curl -fsSL "$UPSTREAM_RAW/cli/Cargo.toml" \
 sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
 echo "Version: $VERSION"
 
-# Core source files to sync (excludes CLI-only: main.rs, install.rs, upgrade.rs)
-CORE_FILES=(color.rs commands.rs connection.rs flags.rs output.rs validation.rs test_utils.rs)
+# Sync build.rs (required for OUT_DIR / cdp_generated.rs codegen)
+curl -fsSL "$UPSTREAM_RAW/cli/build.rs" -o "build.rs"
+echo "  synced build.rs"
+
+# Sync cdp-protocol directory (used by build.rs)
+sync_dir "$SRC/../cdp-protocol" "cdp-protocol"
+
+# Core source files to sync (excludes CLI-only: main.rs, upgrade.rs)
+CORE_FILES=(color.rs commands.rs connection.rs flags.rs install.rs output.rs validation.rs test_utils.rs)
 
 mkdir -p src
 for f in "${CORE_FILES[@]}"; do
