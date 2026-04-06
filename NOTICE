@@ -1,0 +1,20 @@
+agent-browser-core-unofficial
+==============================
+
+This product is an unofficial, community-maintained Rust library crate derived
+from the agent-browser project. It is NOT affiliated with, endorsed by, or
+maintained by Vercel Inc.
+
+Original Work
+-------------
+  agent-browser
+  Copyright 2025 Vercel Inc.
+  https://github.com/vercel-labs/agent-browser
+  Licensed under the Apache License, Version 2.0
+
+The source code in src/ is derived from the cli/src/ directory of the original
+agent-browser repository and is redistributed under the same Apache 2.0 license.
+Modified files carry notices stating the changes made.
+
+This NOTICE file is provided in accordance with Section 4(d) of the
+Apache License, Version 2.0.

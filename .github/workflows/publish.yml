@@ -1,0 +1,62 @@
+name: Sync and Publish
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # check upstream every hour
+  workflow_dispatch:
+
+jobs:
+  sync-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get upstream version
+        id: upstream
+        run: |
+          VERSION=$(curl -fsSL https://raw.githubusercontent.com/vercel-labs/agent-browser/main/cli/Cargo.toml \
+            | grep '^version' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Upstream version: $VERSION"
+
+      - name: Get published crates.io version
+        id: published
+        run: |
+          VERSION=$(curl -fsSL https://crates.io/api/v1/crates/agent-browser-core-unofficial \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['crate']['newest_version'])" \
+            2>/dev/null || echo "0.0.0")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Published version: $VERSION"
+
+      - name: Check if publish needed
+        id: check
+        run: |
+          if [ "${{ steps.upstream.outputs.version }}" = "${{ steps.published.outputs.version }}" ]; then
+            echo "Already at ${{ steps.upstream.outputs.version }}, nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version: ${{ steps.upstream.outputs.version }}"
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.needed == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.check.outputs.needed == 'true'
+
+      - name: Sync sources from upstream
+        if: steps.check.outputs.needed == 'true'
+        run: bash sync.sh
+
+      - name: Build check
+        if: steps.check.outputs.needed == 'true'
+        run: cargo build
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.needed == 'true'
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
