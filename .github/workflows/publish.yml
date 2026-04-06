@@ -9,7 +9,7 @@ jobs:
   sync-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -50,10 +50,6 @@ jobs:
       - name: Sync sources from upstream
         if: steps.check.outputs.needed == 'true'
         run: bash sync.sh
-
-      - name: Build check
-        if: steps.check.outputs.needed == 'true'
-        run: cargo build
 
       - name: Publish to crates.io
         if: steps.check.outputs.needed == 'true'
