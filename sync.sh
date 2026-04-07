@@ -4,9 +4,6 @@
 set -euo pipefail
 
 RAW="https://raw.githubusercontent.com/vercel-labs/agent-browser/main"
-SRC="$RAW/cli/src"
-
-fetch() { curl -fsSL "$1" -o "$2" && echo "  synced $2"; }
 
 echo "Syncing from upstream vercel-labs/agent-browser..."
 
@@ -16,39 +13,46 @@ VERSION=$(curl -fsSL "$RAW/cli/Cargo.toml" \
 sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
 echo "Version: $VERSION"
 
-# build.rs (required for cdp_generated.rs codegen via OUT_DIR)
-fetch "$RAW/cli/build.rs" "build.rs"
+# build.rs
+curl -fsSL "$RAW/cli/build.rs" -o "build.rs"
+echo "  synced build.rs"
 
-# cdp-protocol JSON files (consumed by build.rs)
+# cdp-protocol JSON files (flat, consumed by build.rs)
 mkdir -p cdp-protocol
-fetch "$RAW/cli/cdp-protocol/browser_protocol.json" "cdp-protocol/browser_protocol.json"
-fetch "$RAW/cli/cdp-protocol/js_protocol.json"      "cdp-protocol/js_protocol.json"
-
-# Top-level src files (excludes main.rs, upgrade.rs which are CLI-only)
-mkdir -p src
-for f in color.rs commands.rs connection.rs flags.rs install.rs output.rs validation.rs test_utils.rs; do
-  fetch "$SRC/$f" "src/$f"
+for f in browser_protocol.json js_protocol.json; do
+  curl -fsSL "$RAW/cli/cdp-protocol/$f" -o "cdp-protocol/$f"
+  echo "  synced cdp-protocol/$f"
 done
 
-# src/native/ top-level files
-mkdir -p src/native
-for f in actions.rs auth.rs browser.rs cookies.rs daemon.rs diff.rs e2e_tests.rs \
-          element.rs inspect_server.rs interaction.rs mod.rs network.rs \
-          parity_tests.rs policy.rs providers.rs recording.rs screenshot.rs \
-          snapshot.rs state.rs storage.rs stream.rs tracing.rs; do
-  fetch "$SRC/native/$f" "src/native/$f"
-done
+# Use Python to recursively fetch src/ via GitHub API (handles any future restructuring)
+python3 - <<'PYEOF'
+import urllib.request, json, os, sys
 
-# src/native/cdp/
-mkdir -p src/native/cdp
-for f in chrome.rs client.rs discovery.rs lightpanda.rs mod.rs types.rs; do
-  fetch "$SRC/native/cdp/$f" "src/native/cdp/$f"
-done
+API = "https://api.github.com/repos/vercel-labs/agent-browser/contents"
+RAW = "https://raw.githubusercontent.com/vercel-labs/agent-browser/main"
 
-# src/native/webdriver/
-mkdir -p src/native/webdriver
-for f in appium.rs backend.rs client.rs ios.rs mod.rs safari.rs types.rs; do
-  fetch "$SRC/native/webdriver/$f" "src/native/webdriver/$f"
-done
+# Top-level files to exclude (CLI-only, not needed in the library)
+EXCLUDE = {"main.rs", "upgrade.rs"}
+
+def fetch_dir(api_path, local_path):
+    url = f"{API}/{api_path}"
+    with urllib.request.urlopen(url) as r:
+        items = json.load(r)
+    os.makedirs(local_path, exist_ok=True)
+    for item in items:
+        name = item["name"]
+        if item["type"] == "file":
+            if api_path == "cli/src" and name in EXCLUDE:
+                continue
+            dest = os.path.join(local_path, name)
+            with urllib.request.urlopen(f"{RAW}/{api_path}/{name}") as r:
+                with open(dest, "wb") as f:
+                    f.write(r.read())
+            print(f"  synced {dest}")
+        elif item["type"] == "dir":
+            fetch_dir(f"{api_path}/{name}", os.path.join(local_path, name))
+
+fetch_dir("cli/src", "src")
+PYEOF
 
 echo "Sync complete: $VERSION"
