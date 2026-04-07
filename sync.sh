@@ -13,6 +13,43 @@ VERSION=$(curl -fsSL "$RAW/cli/Cargo.toml" \
 sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
 echo "Version: $VERSION"
 
+# Sync [dependencies], [target.*dependencies], and [build-dependencies] from upstream
+python3 - <<'DEPEOF'
+import urllib.request, re
+
+req = urllib.request.Request(
+    "https://raw.githubusercontent.com/vercel-labs/agent-browser/main/cli/Cargo.toml",
+    headers={"User-Agent": "sync-script"}
+)
+with urllib.request.urlopen(req) as r:
+    upstream = r.read().decode()
+
+with open("Cargo.toml") as f:
+    local = f.read()
+
+# Extract dependency sections from upstream
+sections = ["[dependencies]", "[target.'cfg(unix)'.dependencies]",
+            "[target.'cfg(windows)'.dependencies]", "[build-dependencies]"]
+
+def extract_section(toml, header):
+    pattern = re.escape(header) + r"\n(.*?)(?=\n\[|\Z)"
+    m = re.search(pattern, toml, re.DOTALL)
+    return m.group(0) if m else None
+
+for section in sections:
+    upstream_block = extract_section(upstream, section)
+    if not upstream_block:
+        continue
+    local_block = extract_section(local, section)
+    if local_block:
+        local = local.replace(local_block, upstream_block)
+
+with open("Cargo.toml", "w") as f:
+    f.write(local)
+
+print(f"  synced dependencies from upstream")
+DEPEOF
+
 # build.rs
 curl -fsSL "$RAW/cli/build.rs" -o "build.rs"
 echo "  synced build.rs"
