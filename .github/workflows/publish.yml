@@ -49,7 +49,13 @@ jobs:
 
       - name: Sync sources from upstream
         if: steps.check.outputs.needed == 'true'
-        run: bash sync.sh
+        run: python3 sync.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Verify build
+        if: steps.check.outputs.needed == 'true'
+        run: cargo check
 
       - name: Publish to crates.io
         if: steps.check.outputs.needed == 'true'
